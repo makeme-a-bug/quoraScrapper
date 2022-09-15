@@ -140,17 +140,20 @@ class QuestionScraper(webdriver.Chrome):
     def get_related_questions(self,url,found=[],depth=3):
         questions = []
         if depth > 0:
-            page = self.get_page(url)
-            time.sleep(5)
-            page = self.page_source
-            source = self.beauti(page,'html.parser')
-            main_div = source.select_one("[id='mainContent']").next_sibling
-            questions_div = main_div.find("div",{'role':"list"})
-            for q in questions_div:
-                link = q.find("a")['href']
-                if link not in found and link not in questions:
-                    questions.append(link)
-                    questions.extend(self.get_related_questions(link,questions,depth=depth-1))
+                page = self.get_page(url)
+                time.sleep(5)
+                page = self.page_source
+                source = self.beauti(page,'html.parser')
+                main_div = source.select_one("[id='mainContent']").next_sibling
+                questions_div = main_div.find("div",{'role':"list"})
+                for q in questions_div:
+                    link = q.find("a")['href']
+                    if link not in found and link not in questions:
+                        try:
+                            questions.append(link)
+                            questions.extend(self.get_related_questions(link,questions,depth=depth-1))
+                        except:
+                            pass
         return questions
 
 

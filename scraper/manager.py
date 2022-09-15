@@ -34,6 +34,9 @@ class Manager:
             for r in results:
                 questions.extend(r)
 
+        questions_df = pd.DataFrame(columns=["questions"])
+        questions_df['questions'] = questions
+        questions_df.to_csv("all_questions_temp.csv")
 
         with ThreadPoolExecutor(max_workers=10) as executor:
             results = executor.map(self.get_related_questions, questions)
@@ -43,10 +46,6 @@ class Manager:
         related_questions_df = pd.DataFrame(columns=["questions"])
         related_questions_df['questions'] = related_questions
         related_questions_df.to_csv("related__questions_temp.csv")
-
-        questions_df = pd.DataFrame(columns=["questions"])
-        questions_df['questions'] = questions
-        questions_df.to_csv("all_questions_temp.csv")
 
         combined = pd.concat([questions_df,related_questions_df])
         combined = combined.drop_duplicates(['questions'])
@@ -85,9 +84,12 @@ class Manager:
 
     def get_related_questions(self,url):
         questions = []
-        proxy = self.create_proxy()
-        with QuestionScraper(options=proxy) as bot:
-            questions.extend(bot.get_related_questions(url))
+        try:
+            proxy = self.create_proxy()
+            with QuestionScraper(options=proxy) as bot:
+                questions.extend(bot.get_related_questions(url))
+        except:
+            pass
         return questions
 
     def get_question_details(self,url):
