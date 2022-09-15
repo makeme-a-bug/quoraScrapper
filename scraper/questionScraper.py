@@ -34,6 +34,13 @@ class QuestionScraper(webdriver.Chrome):
 
     def get_page(self,url:str) -> bool:
         self.get(url)
+        for i in range(3):
+            try:
+                WebDriverWait(self, 50).until(EC.presence_of_element_located((By.CSS_SELECTOR,"[class *= 'SiteHeader']")))
+                break
+            except TimeoutException:
+                self.get(url)
+        
 
 
     def get_question_details(self,url:str):
@@ -59,7 +66,7 @@ class QuestionScraper(webdriver.Chrome):
                         views = views.replace(k,"")
                         views = float(views) * v
                         break
-            if "Last followed" in text:    
+            if "Last followed" in text or 'Last requested' in text:    
                 last_followed = " ".join(text.split(" ")[2:])
             if "merged questions" in text:    
                 merged = int(re.findall(r'\d+', text)[0])
@@ -86,6 +93,8 @@ class QuestionScraper(webdriver.Chrome):
         return answers
 
     def get_answers2(self,url):
+        if "unanswered" in url:
+            return 0
         page = self.get_page(url)
         time.sleep(5)
         dropdown = None
@@ -103,6 +112,8 @@ class QuestionScraper(webdriver.Chrome):
 
         page = self.page_source
         source = self.beauti(page,'html.parser')
+        if "This question does not have any answers yet" in self.page_source or "No answers" in self.page_source:
+            return answers
         if dropdown:
             main_div = source.select("[class*='puppeteer_test_popover_menu']")[0].select("[class*='qu-dynamicFontSize--small']")[1].getText()
             answers = re.findall(r'\d+', main_div)[0]
@@ -126,18 +137,20 @@ class QuestionScraper(webdriver.Chrome):
                 break
             time.sleep(3)
 
-    def get_related_questions(self,url,depth=10):
-        page = self.get_page(url)
-        time.sleep(5)
-        page = self.page_source
-        source = self.beauti(page,'html.parser')
+    def get_related_questions(self,url,found=[],depth=3):
         questions = []
-        main_div = source.select_one("[id='mainContent']").next_sibling
-        questions_div = main_div.find("div",{'role':"list"})
-        for q in questions_div:
-            link = q.find("a")['href']
-            questions.extend(self.get_related_questions(link,depth=depth-1))
-            questions.append(link)
+        if depth > 0:
+            page = self.get_page(url)
+            time.sleep(5)
+            page = self.page_source
+            source = self.beauti(page,'html.parser')
+            main_div = source.select_one("[id='mainContent']").next_sibling
+            questions_div = main_div.find("div",{'role':"list"})
+            for q in questions_div:
+                link = q.find("a")['href']
+                if link not in found and link not in questions:
+                    questions.append(link)
+                    questions.extend(self.get_related_questions(link,questions,depth=depth-1))
         return questions
 
 

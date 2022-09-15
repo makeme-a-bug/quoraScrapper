@@ -11,6 +11,7 @@ from concurrent.futures import ThreadPoolExecutor
 import uuid
 import os
 import shutil
+from dateutil import parser
 
 class Manager:
 
@@ -20,7 +21,7 @@ class Manager:
         self.proxies = self.read_proxies()
 
     def get_inputs(self):
-        file = pd.read_csv(self.file).head(1)
+        file = pd.read_csv(self.file)
         return file
 
     def start_collection(self):
@@ -32,28 +33,36 @@ class Manager:
             results = executor.map(self.get_questions, self.inputs['Links'].to_list())
             for r in results:
                 questions.extend(r)
+
+
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            results = executor.map(self.get_related_questions, questions)
+            for r in results:
+                related_questions.extend(r)
         
-        for q in questions[:1]:
-            proxy = self.create_proxy()
-            with QuestionScraper(options=proxy) as bot:
-                related_questions.extend(bot.get_related_questions(q))
         related_questions_df = pd.DataFrame(columns=["questions"])
-        related_questions_df['questions'] = questions
+        related_questions_df['questions'] = related_questions
         related_questions_df.to_csv("related__questions_temp.csv")
 
-        lol
         questions_df = pd.DataFrame(columns=["questions"])
         questions_df['questions'] = questions
         questions_df.to_csv("all_questions_temp.csv")
+
+        combined = pd.concat([questions_df,related_questions_df])
+        combined = combined.drop_duplicates(['questions'])
+        combined.to_csv("combined.csv")
+
         with ThreadPoolExecutor(max_workers=10) as executor:
-            results = executor.map(self.get_question_details, questions)
+            results = executor.map(self.get_question_details, combined['questions'].to_list())
             for r in results:
                 report.extend(r)
 
         report = pd.DataFrame(report)
         report.sort_values(['Followers','answers'],inplace=True,ascending=[False, True])
-        report.to_csv("report.csv")
+        report.to_csv("desired_output.csv")
         self.clean_up()
+        report['Last_followed_date'] = report['Last_followed_date'].apply(lambda x:  parser.parse(str(x)) if len(str(x)) > 0 and not pd.isna(x) else "")
+        report.to_csv("desired_output.csv")
 
     def read_proxies(self):
         column_names = ["proxy_host","proxy_port","username",'pwd']
@@ -65,7 +74,7 @@ class Manager:
     def get_questions(self,url):
         proxy = self.create_proxy()
         questions = []
-        with Scraper(options=proxy) as bot:
+        with Scraper(options=proxy,destroy=False) as bot:
             bot.get_page(url)
             time.sleep(10)
             bot.start_scrolling()
@@ -74,6 +83,12 @@ class Manager:
         return questions
 
 
+    def get_related_questions(self,url):
+        questions = []
+        proxy = self.create_proxy()
+        with QuestionScraper(options=proxy) as bot:
+            questions.extend(bot.get_related_questions(url))
+        return questions
 
     def get_question_details(self,url):
         try:
@@ -96,7 +111,7 @@ class Manager:
 
 
     def create_proxy(self):
-        proxy = random.choice(list(range(0,len(self.proxies))))
+        proxy = random.choice(list(range(0,len(self.proxies[:50]))))
         proxy = self.proxies.iloc[proxy]
         manifest_json,background_js = file_data(proxy['proxy_host'],proxy['proxy_port'],proxy['username'],proxy['pwd'])
         id= str(uuid.uuid4())
@@ -136,3 +151,10 @@ class Manager:
 #         "merged":merged
 #     })
 #     time.sleep(5)
+
+
+
+# for q in questions[:10]:
+#             proxy = self.create_proxy()
+#             with QuestionScraper(options=proxy) as bot:
+#                 related_questions.extend(bot.get_related_questions(q))

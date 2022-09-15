@@ -34,6 +34,12 @@ class Scraper(webdriver.Chrome):
 
     def get_page(self,url:str) -> bool:
         self.get(url)
+        for i in range(3):
+            try:
+                WebDriverWait(self, 50).until(EC.presence_of_element_located((By.CSS_SELECTOR,"[class *= 'SiteHeader']")))
+                break
+            except TimeoutException:
+                self.get(url)
 
 
     def get_question_details(self,url:str):
