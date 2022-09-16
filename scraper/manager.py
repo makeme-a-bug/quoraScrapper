@@ -1,3 +1,4 @@
+from datetime import datetime
 import random
 from .scraper import Scraper
 from .questionScraper import QuestionScraper
@@ -17,15 +18,34 @@ class Manager:
 
     def __init__(self,file='Quora URLs - Topics.csv'):
         self.file = "inputs/"+file
+        self.check_dirs()
         self.inputs = self.get_inputs()
         self.proxies = self.read_proxies()
+        self.start_from_scratch = True
+
+
+    def check_dirs(self):
+        dirs = ['./inputs','./results','./temp',"./pluginFile"]
+        for d in dirs:
+            if not os.path.isdir(d):
+                os.mkdir(d)
 
     def get_inputs(self):
+        if not os.path.exists(f"{self.file}"):
+            raise Exception(f"File {self.file} does not exists")
         file = pd.read_csv(self.file)
         return file
 
+    def parse_date(self,date):
+        try:
+            if len(str(date)) > 0 and not pd.isna(date):
+                return parser.parse(str(date).replace("ago",""))
+            else:
+                return ""
+        except:
+           return datetime.now()
+
     def start_collection(self):
-        report = []
         questions = []
         related_questions = []
 
@@ -36,7 +56,7 @@ class Manager:
 
         questions_df = pd.DataFrame(columns=["questions"])
         questions_df['questions'] = questions
-        questions_df.to_csv("all_questions_temp.csv")
+        questions_df.to_csv("./temp/all_questions_temp.csv")
 
         with ThreadPoolExecutor(max_workers=10) as executor:
             results = executor.map(self.get_related_questions, questions)
@@ -45,23 +65,32 @@ class Manager:
         
         related_questions_df = pd.DataFrame(columns=["questions"])
         related_questions_df['questions'] = related_questions
-        related_questions_df.to_csv("related__questions_temp.csv")
+        related_questions_df.to_csv("./temp/related__questions_temp.csv")
 
         combined = pd.concat([questions_df,related_questions_df])
         combined = combined.drop_duplicates(['questions'])
-        combined.to_csv("combined.csv")
+        combined.to_csv("./temp/combined.csv")
 
-        with ThreadPoolExecutor(max_workers=10) as executor:
-            results = executor.map(self.get_question_details, combined['questions'].to_list())
-            for r in results:
-                report.extend(r)
+        # combined = pd.read_csv("combined.csv")
 
-        report = pd.DataFrame(report)
-        report.sort_values(['Followers','answers'],inplace=True,ascending=[False, True])
-        report.to_csv("desired_output.csv")
-        self.clean_up()
-        report['Last_followed_date'] = report['Last_followed_date'].apply(lambda x:  parser.parse(str(x)) if len(str(x)) > 0 and not pd.isna(x) else "")
-        report.to_csv("desired_output.csv")
+        for i in range(0, len(combined), 50):
+            report = []
+            with ThreadPoolExecutor(max_workers=10) as executor:
+                results = executor.map(self.get_question_details, combined['questions'].to_list()[i:i+50])#
+                for r in results:
+                    report.extend(r)
+                report = pd.DataFrame(report)
+                report.sort_values(['Followers','answers'],inplace=True,ascending=[False, True])
+                if not os.path.isfile('results/desired_output.csv'):
+                    report.to_csv('results/desired_output.csv')
+                    report['Last Followed Date'] = report['Last Followed Date'].apply(self.parse_date)
+                    report.to_csv('results/desired_output.csv')
+                else: # else it exists so append without writing the header
+                    report['Last Followed Date'] = report['Last Followed Date'].apply(self.parse_date)
+                    report.to_csv('results/desired_output.csv', mode='a', header=False)
+                self.clean_up()
+    
+    
 
     def read_proxies(self):
         column_names = ["proxy_host","proxy_port","username",'pwd']
@@ -102,18 +131,18 @@ class Manager:
             print(e)
             return []
         return [{
-                "Question_url" : url,
+                "Question URL" : url,
                 "Question":question_text,
                 "Followers":followers,
-                "Last_followed_date":last_followed,
+                "Last Followed Date":last_followed,
                 "Views":views,
-                "answers":answers,
-                "merged":merged
+                "Answers":answers,
+                "Merged Questions":merged
                 }]
 
 
     def create_proxy(self):
-        proxy = random.choice(list(range(0,len(self.proxies[:50]))))
+        proxy = random.choice(list(range(0,len(self.proxies[:1000]))))
         proxy = self.proxies.iloc[proxy]
         manifest_json,background_js = file_data(proxy['proxy_host'],proxy['proxy_port'],proxy['username'],proxy['pwd'])
         id= str(uuid.uuid4())
@@ -139,24 +168,3 @@ class Manager:
             except Exception as e:
                 print('Failed to delete %s. Reason: %s' % (file_path, e))
 
-# for ques in bot.questions:
-#     answers,question_text,followers , views , last_followed , merged = bot.get_question_details(ques)
-#     results.append({
-#         "Question_url" : ques,
-#         "Question":question_text,
-#         "Followers":followers,
-#         "Last_followed_date":last_followed,
-#         "Views":views,
-#         "Link_used":row['Links'],
-#         "Link_title":row['Name'],
-#         "answers":answers,
-#         "merged":merged
-#     })
-#     time.sleep(5)
-
-
-
-# for q in questions[:10]:
-#             proxy = self.create_proxy()
-#             with QuestionScraper(options=proxy) as bot:
-#                 related_questions.extend(bot.get_related_questions(q))

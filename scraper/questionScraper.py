@@ -20,7 +20,6 @@ class QuestionScraper(webdriver.Chrome):
 
     def __init__(self,scroll_limit:str=100, driver_path : str="D:\Downloads\chromedriver.exe",destroy : bool=True,options=webdriver.ChromeOptions()) -> None:
         self.driver_path = driver_path
-        os.environ["PATH"] += driver_path
         self.destroy_browser = destroy
         self.scroll_limit = scroll_limit
         self.scrolled = 0
@@ -75,24 +74,11 @@ class QuestionScraper(webdriver.Chrome):
         except:
             print(url)
 
-        answers = self.get_answers2(url)
+        answers = self.get_answers(url)
         return answers,question,followers,views,last_followed,merged 
 
-    def get_answers(self,source:BeautifulSoup):
-        main_div = source.select_one("[id='mainContent']")
-        # print(main_div.findAll("div", recursive=False)[1].select_one("[class*='q-box qu-pt--medium qu-pb--medium']").select("div[class='q-box']"))
-        all_answers= main_div.findAll("div", recursive=False)[1].select_one("[class*='q-box qu-pt--medium qu-pb--medium']").select("div[class='q-box']")
-        answers = 0
-        for a in all_answers:
-            divs = a.findAll("div")
-            if len(divs) > 1:
-                title:str = divs.getText()
-                if "answer added" in title.lower() and "deleted" not in title.lower():
-                    answers+=1
-        
-        return answers
 
-    def get_answers2(self,url):
+    def get_answers(self,url):
         if "unanswered" in url:
             return 0
         page = self.get_page(url)
@@ -116,7 +102,13 @@ class QuestionScraper(webdriver.Chrome):
             return answers
         if dropdown:
             main_div = source.select("[class*='puppeteer_test_popover_menu']")[0].select("[class*='qu-dynamicFontSize--small']")[1].getText()
-            answers = re.findall(r'\d+', main_div)[0]
+            if "+" in main_div:
+                try:
+                    answers = self.answers_by_scrolling()
+                except:
+                    answers = re.findall(r'\d+', main_div)[0]
+            else:
+                answers = re.findall(r'\d+', main_div)[0]
         else:
             main_div = source.select_one("[id='mainContent']")
             # main_div = main_div.select_one("[class*='q-box qu-px--medium qu-pt--small qu-pb--small']")
@@ -124,20 +116,36 @@ class QuestionScraper(webdriver.Chrome):
             answers = re.findall(r'\d+', answers)[0]
         return int(answers)
 
-
-
-    def start_scrolling(self):
+    def answers_by_scrolling(self):
         time.sleep(5)
-        while self.scrolled <= self.scroll_limit:
+        self.maximize_window()
+        self.start_scrolling(limit=1000,condition="q-box Placeholder")
+        time.sleep(5)
+        source = self.beauti(self.page_source,'html.parser')
+        source = source.select_one('[id="mainContent"]').find_all('div',recursive=False)[1]
+        source = source.find_all('div',attrs={'class': None},recursive=False)
+        return len(source)
+        
+    def start_scrolling(self,limit=None,condition=None):
+        self.scrolled = 0
+        time.sleep(5)
+        if not limit:
+            limit = self.scroll_limit
+
+        if not condition:
+            condition = 'LoadingDots'
+
+
+        while self.scrolled <= limit:
             self.next_scroll()
             wait_long = WebDriverWait(self, 100)
             try:
-                wiat = wait_long.until(EC.presence_of_element_located((By.CSS_SELECTOR, 'div[class *= "LoadingDots"]')))
+                wiat = wait_long.until(EC.presence_of_element_located((By.CSS_SELECTOR, f'div[class *= "{condition}"]')))
             except TimeoutException:
                 break
             time.sleep(3)
 
-    def get_related_questions(self,url,found=[],depth=3):
+    def get_related_questions(self,url,found=[],depth=2):
         questions = []
         if depth > 0:
                 page = self.get_page(url)
